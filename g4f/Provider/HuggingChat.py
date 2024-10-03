@@ -12,26 +12,25 @@ class HuggingChat(AbstractProvider, ProviderModelMixin):
     working = True
     supports_stream = True
     default_model = "meta-llama/Meta-Llama-3.1-70B-Instruct"
+    
     models = [
         'meta-llama/Meta-Llama-3.1-70B-Instruct',
-        'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8',
-        'CohereForAI/c4ai-command-r-plus',
-        'mistralai/Mixtral-8x7B-Instruct-v0.1',
-        'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO',
-        '01-ai/Yi-1.5-34B-Chat',
-        'mistralai/Mistral-7B-Instruct-v0.3',
-        'microsoft/Phi-3-mini-4k-instruct',
+        'CohereForAI/c4ai-command-r-plus-08-2024',
+        'Qwen/Qwen2.5-72B-Instruct',
+        'meta-llama/Llama-3.2-11B-Vision-Instruct',
+        'NousResearch/Hermes-3-Llama-3.1-8B',
+        'mistralai/Mistral-Nemo-Instruct-2407',
+        'microsoft/Phi-3.5-mini-instruct',
     ]
     
     model_aliases = {
         "llama-3.1-70b": "meta-llama/Meta-Llama-3.1-70B-Instruct",
-        "llama-3.1-405b": "meta-llama/Meta-Llama-3.1-405B-Instruct-FP8",
-        "command-r-plus": "CohereForAI/c4ai-command-r-plus",
-        "mixtral-8x7b": "mistralai/Mixtral-8x7B-Instruct-v0.1",
-        "mixtral-8x7b": "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
-        "yi-1.5-34b": "01-ai/Yi-1.5-34B-Chat",
-        "mistral-7b": "mistralai/Mistral-7B-Instruct-v0.3",
-        "phi-3-mini-4k": "microsoft/Phi-3-mini-4k-instruct",
+        "command-r-plus": "CohereForAI/c4ai-command-r-plus-08-2024",
+        "qwen-2-72b": "Qwen/Qwen2.5-72B-Instruct",
+        "llama-3.2-11b": "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        "hermes-3": "NousResearch/Hermes-3-Llama-3.1-8B",
+        "mistral-nemo": "mistralai/Mistral-Nemo-Instruct-2407",
+        "phi-3.5-mini": "microsoft/Phi-3.5-mini-instruct",
     }
 
     @classmethod
@@ -80,7 +79,7 @@ class HuggingChat(AbstractProvider, ProviderModelMixin):
             response = session.post('https://huggingface.co/chat/conversation', json=json_data)
             conversationId = response.json()['conversationId']
 
-            response = session.get(f'https://huggingface.co/chat/conversation/{conversationId}/__data.json?x-sveltekit-invalidated=01',)
+            response = session.get(f'https://huggingface.co/chat/conversation/{conversationId}/__data.json?x-sveltekit-invalidated=11',)
 
             data: list = (response.json())["nodes"][1]["data"]
             keys: list[int] = data[data[0]["messages"]]

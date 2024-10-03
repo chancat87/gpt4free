@@ -1,40 +1,49 @@
 from __future__ import annotations
 
-import json
-import base64
 from aiohttp import ClientSession
-from typing import AsyncGenerator
-
-from ..typing import AsyncResult, Messages
 from .base_provider import AsyncGeneratorProvider, ProviderModelMixin
-from ..image import ImageResponse
 from .helper import format_prompt
+from .nexra.NexraBing import NexraBing
+from .nexra.NexraChatGPT import NexraChatGPT
+from .nexra.NexraChatGPT4o import NexraChatGPT4o
+from .nexra.NexraChatGPTWeb import NexraChatGPTWeb
+from .nexra.NexraGeminiPro import NexraGeminiPro
+from .nexra.NexraImageURL import NexraImageURL
+from .nexra.NexraLlama import NexraLlama
+from .nexra.NexraQwen import NexraQwen
 
 class Nexra(AsyncGeneratorProvider, ProviderModelMixin):
     url = "https://nexra.aryahcr.cc"
-    api_endpoint_text = "https://nexra.aryahcr.cc/api/chat/gpt"
-    api_endpoint_image = "https://nexra.aryahcr.cc/api/image/complements"
     working = True
     supports_gpt_35_turbo = True
     supports_gpt_4 = True
     supports_stream = True
     supports_system_message = True
     supports_message_history = True
-    
     default_model = 'gpt-3.5-turbo'
-    models = [
-        # Text models
-        'gpt-4', 'gpt-4-0613', 'gpt-4-32k', 'gpt-4-0314', 'gpt-4-32k-0314',
-        'gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'gpt-3.5-turbo-0613', 'gpt-3.5-turbo-16k-0613', 'gpt-3.5-turbo-0301',
-        'gpt-3', 'text-davinci-003', 'text-davinci-002', 'code-davinci-002',
-        'text-curie-001', 'text-babbage-001', 'text-ada-001',
-        'davinci', 'curie', 'babbage', 'ada', 'babbage-002', 'davinci-002',
-        # Image models
-        'dalle', 'dalle-mini', 'emi'
-    ]
+    image_model = 'sdxl-turbo'
     
-    image_models = {"dalle", "dalle-mini", "emi"}
-    text_models = set(models) - image_models
+    models = (
+        *NexraBing.models,
+        *NexraChatGPT.models,
+        *NexraChatGPT4o.models,
+        *NexraChatGPTWeb.models,
+        *NexraGeminiPro.models,
+        *NexraImageURL.models,
+        *NexraLlama.models,
+        *NexraQwen.models,
+    )
+
+    model_to_provider = {
+        **{model: NexraChatGPT for model in NexraChatGPT.models},
+        **{model: NexraChatGPT4o for model in NexraChatGPT4o.models},
+        **{model: NexraChatGPTWeb for model in NexraChatGPTWeb.models},
+        **{model: NexraGeminiPro for model in NexraGeminiPro.models},
+        **{model: NexraImageURL for model in NexraImageURL.models},
+        **{model: NexraLlama for model in NexraLlama.models},
+        **{model: NexraQwen for model in NexraQwen.models},
+        **{model: NexraBing for model in NexraBing.models},
+    }
     
     model_aliases = {
         "gpt-4": "gpt-4-0613",
@@ -60,7 +69,17 @@ class Nexra(AsyncGeneratorProvider, ProviderModelMixin):
         "gpt-3": "ada",
         "gpt-3": "babbage-002",
         "gpt-3": "davinci-002",
+        
+        "gpt-4": "gptweb",
+        
+        "gpt-4": "Bing (Balanced)",
+        "gpt-4": "Bing (Creative)",
+        "gpt-4": "Bing (Precise)",
+        
+        "dalle-2": "dalle2",
+        "sdxl": "sdxl-turbo",
     }
+
 
     @classmethod
     def get_model(cls, model: str) -> str:
@@ -72,110 +91,28 @@ class Nexra(AsyncGeneratorProvider, ProviderModelMixin):
             return cls.default_model
 
     @classmethod
+    def get_api_endpoint(cls, model: str) -> str:
+        provider_class = cls.model_to_provider.get(model)
+
+        if provider_class:
+            return provider_class.api_endpoint
+        raise ValueError(f"API endpoint for model {model} not found.")
+
+    @classmethod
     async def create_async_generator(
         cls,
         model: str,
         messages: Messages,
         proxy: str = None,
         **kwargs
-    ) -> AsyncGenerator[str | ImageResponse, None]:
+    ) -> AsyncResult:
         model = cls.get_model(model)
-        
-        if model in cls.image_models:
-            async for result in cls.create_image_async_generator(model, messages, proxy, **kwargs):
-                yield result
+        api_endpoint = cls.get_api_endpoint(model)
+
+        provider_class = cls.model_to_provider.get(model)
+
+        if provider_class:
+            async for response in provider_class.create_async_generator(model, messages, proxy, **kwargs):
+                yield response
         else:
-            async for result in cls.create_text_async_generator(model, messages, proxy, **kwargs):
-                yield result
-
-    @classmethod
-    async def create_text_async_generator(
-        cls,
-        model: str,
-        messages: Messages,
-        proxy: str = None,
-        **kwargs
-    ) -> AsyncGenerator[str, None]:
-        headers = {
-            "Content-Type": "application/json",
-        }
-        async with ClientSession(headers=headers) as session:
-            data = {
-                "messages": messages,
-                "prompt": format_prompt(messages),
-                "model": model,
-                "markdown": False,
-                "stream": False,
-            }
-            async with session.post(cls.api_endpoint_text, json=data, proxy=proxy) as response:
-                response.raise_for_status()
-                result = await response.text()
-                json_result = json.loads(result)
-                yield json_result["gpt"]
-
-    @classmethod
-    async def create_image_async_generator(
-        cls,
-        model: str,
-        messages: Messages,
-        proxy: str = None,
-        **kwargs
-    ) -> AsyncGenerator[ImageResponse | str, None]:
-        headers = {
-            "Content-Type": "application/json"
-        }
-
-        prompt = messages[-1]['content'] if messages else ""
-
-        data = {
-            "prompt": prompt,
-            "model": model
-        }
-
-        async def process_response(response_text: str) -> ImageResponse | None:
-            json_start = response_text.find('{')
-            if json_start != -1:
-                json_data = response_text[json_start:]
-                try:
-                    response_data = json.loads(json_data)
-                    image_data = response_data.get('images', [])[0]
-                    
-                    if image_data.startswith('data:image/'):
-                        return ImageResponse([image_data], "Generated image")
-                    
-                    try:
-                        base64.b64decode(image_data)
-                        data_uri = f"data:image/jpeg;base64,{image_data}"
-                        return ImageResponse([data_uri], "Generated image")
-                    except:
-                        print("Invalid base64 data")
-                        return None
-                except json.JSONDecodeError:
-                    print("Failed to parse JSON.")
-            else:
-                print("No JSON data found in the response.")
-            return None
-
-        async with ClientSession(headers=headers) as session:
-            async with session.post(cls.api_endpoint_image, json=data, proxy=proxy) as response:
-                response.raise_for_status()
-                response_text = await response.text()
-                
-                image_response = await process_response(response_text)
-                if image_response:
-                    yield image_response
-                else:
-                    yield "Failed to process image data."
-
-    @classmethod
-    async def create_async(
-        cls,
-        model: str,
-        messages: Messages,
-        proxy: str = None,
-        **kwargs
-    ) -> str:
-        async for response in cls.create_async_generator(model, messages, proxy, **kwargs):
-            if isinstance(response, ImageResponse):
-                return response.images[0]
-            return response
+            raise ValueError(f"Provider for model {model} not found.")
